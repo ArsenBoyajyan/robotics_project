@@ -7,7 +7,7 @@ from scipy.ndimage import gaussian_filter
 class CoffeeLatteArt:
     def __init__(self, edge_image, num_frames=120):
         """
-        初始化拉花动画生成器，增强牛奶扩散效果
+        初始化拉花动画生成器，增强牛奶扩散效果，引入SPH模拟
         
         参数:
         edge_image (numpy.ndarray): 边缘检测后的圆形图像
@@ -25,8 +25,68 @@ class CoffeeLatteArt:
         self.width = edge_image.shape[1]
         self.height = edge_image.shape[0]
         
+        # SPH粒子系统参数
+        self.num_particles = 2000
+        self.particles = self._initialize_particles()
+        
         # 扩散参数
         self.milk_history = []
+
+    def __init__(self, edge_image, num_frames=120):
+        """
+        初始化拉花动画生成器,增强牛奶扩散效果,引入SPH模拟
+        
+        参数:
+        edge_image (numpy.ndarray): 边缘检测后的圆形图像
+        num_frames (int): 动画帧数
+        """
+        # 找到圆形区域
+        self.mask = self._find_circular_region(edge_image)
+        
+        # 初始化画布
+        self.canvas = np.zeros_like(edge_image, dtype=np.float32)
+        self.canvas[self.mask] = 0.1  # 初始底色
+        
+        # 动画参数
+        self.num_frames = num_frames
+        self.width = edge_image.shape[1]
+        self.height = edge_image.shape[0]
+        
+        # SPH粒子系统参数
+        self.num_particles = 2000
+        self.particles = self._initialize_particles()
+        
+        # 扩散参数
+        self.milk_history = []
+
+    def _initialize_particles(self):
+        """
+        初始化SPH粒子系统
+        
+        返回:
+        numpy.ndarray: 粒子属性数组
+        """
+        particles = np.zeros((self.num_particles, 6))
+        
+        # 粒子属性: [y, x, vel_y, vel_x, density, intensity]
+        for i in range(self.num_particles):
+            # 在圆形区域内随机生成粒子
+            attempts = 0
+            while attempts < 100:
+                y = np.random.randint(0, self.height)
+                x = np.random.randint(0, self.width)
+                if self.mask[y, x]:
+                    particles[i, 0] = y
+                    particles[i, 1] = x
+                    break
+                attempts += 1
+            
+            # 如果无法找到有效位置，默认放置在画布中心
+            if attempts == 100:
+                particles[i, 0] = self.height // 2
+                particles[i, 1] = self.width // 2
+        
+        return particles    
     
     def _find_circular_region(self, edge_image):
         """
@@ -73,9 +133,80 @@ class CoffeeLatteArt:
         
         return mask
     
+    def _smoothing_kernel(self, distance, h=20):
+        """
+        Wendland核函数
+        
+        参数:
+        distance (float): 粒子间距离
+        h (float): 平滑长度
+        
+        返回:
+        float: 核函数值
+        """
+        q = distance / h
+
+        if q <= 1.0:
+            return (315 / (64 * np.pi * h**3)) * (1 - q)**3
+        return 0
+    
+    def _compute_particle_density(self):
+        """
+        计算粒子密度
+        """
+        for i in range(self.num_particles):
+            density = 0
+            for j in range(self.num_particles):
+                # 计算粒子间距离
+                dy = self.particles[i, 0] - self.particles[j, 0]
+                dx = self.particles[i, 1] - self.particles[j, 1]
+                distance = np.sqrt(dy**2 + dx**2)
+                
+                # 使用核函数计算密度
+                density += self._smoothing_kernel(distance)
+            
+            self.particles[i, 4] = density
+    
+    def _apply_sph_dynamics(self, frame_num):
+        """
+        应用SPH动力学模拟
+        
+        参数:
+        frame_num (int): 当前帧数
+        """
+        # 计算粒子密度
+        self._compute_particle_density()
+        
+        # 模拟牛奶流动路径
+        center_x = self.width // 2
+        amplitude = self.width // 8
+        frequency = 0.2
+        
+        # 计算牛奶流动的x坐标，增加随机性
+        milk_x = int(center_x + amplitude * np.sin(frequency * frame_num) + 
+                     np.random.randint(-10, 10))
+        milk_y = int(self.height * frame_num / self.num_frames)
+        
+        # 影响附近粒子
+        for i in range(self.num_particles):
+            dy = self.particles[i, 0] - milk_y
+            dx = self.particles[i, 1] - milk_x
+            distance = np.sqrt(dy**2 + dx**2)
+            
+            # 基于距离的速度和强度更新
+            if distance < 20:
+                # 速度衰减
+                self.particles[i, 2] += 0.1 * (milk_y - self.particles[i, 0]) / (distance + 1)
+                self.particles[i, 3] += 0.1 * (milk_x - self.particles[i, 1]) / (distance + 1)
+                
+                # 强度更新
+                intensity = max(0, 1 - distance/20)
+                self.particles[i, 5] = intensity
+
+
     def generate_latte_art(self):
         """
-        生成拉花动画帧，增强牛奶扩散效果
+        生成拉花动画帧,融合传统方法和SPH模拟
         
         返回:
         list: 动画帧列表
@@ -83,14 +214,18 @@ class CoffeeLatteArt:
         frames = []
         
         for i in range(self.num_frames):
-            # 模拟拉花过程
-            self._add_milk_stream(i)
+            # SPH动力学模拟
+            self._apply_sph_dynamics(i)
             
-            # 物理扩散模拟
-            self._simulate_milk_spread()
+            # 更新画布
+            canvas_copy = self.canvas.copy()
+            for particle in self.particles:
+                y, x = int(particle[0]), int(particle[1])
+                if 0 <= y < self.height and 0 <= x < self.width and self.mask[y, x]:
+                    canvas_copy[y, x] += 0.1 * particle[5]
             
-            # 高斯模糊创建柔和效果
-            frame = gaussian_filter(self.canvas.copy(), sigma=1.5)
+            # 应用高斯模糊
+            frame = gaussian_filter(canvas_copy, sigma=1.5)
             
             # 归一化到0-1范围
             frame = (frame - frame.min()) / (frame.max() - frame.min())
