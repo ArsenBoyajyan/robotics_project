@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from scipy.ndimage import gaussian_filter
@@ -360,4 +361,5 @@ def visualize_latte_art(edge_image=None):
 
 # 如果直接运行此脚本，生成并显示拉花艺术动画
 if __name__ == "__main__":
+    matplotlib.use('TkAgg')
     visualize_latte_art()

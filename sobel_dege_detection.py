@@ -99,5 +99,6 @@ def process_coffee_photos(photo_folder):
 
 
 # 使用示例
-# 请在运行前替换 'path/to/your/photo/folder' 为实际的文件夹路径
-process_coffee_photos('/home/user/xiao/ME467/project/photo')
+current_dir = os.path.dirname(__file__)
+photos_path = os.path.join(current_dir, "photo")
+process_coffee_photos(photos_path)

@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 def load_and_visualize_sobel_image(image_path):
@@ -25,7 +26,8 @@ def load_and_visualize_sobel_image(image_path):
 # 示例使用
 if __name__ == "__main__":
     # 替换为你的 sobel_combined_result.png 图像路径
-    image_path = "/home/user/xiao/ME467/project/sobel_combined_result.png"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    image_path = os.path.join(current_dir, "sobel_combined_result.png")
     load_and_visualize_sobel_image(image_path)
 
        
